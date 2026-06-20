@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Document Intelligence Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+    <div class="max-w-5xl mx-auto px-4 py-12">
+        
+        <div class="mb-10 text-center">
+            <h1 class="text-4xl font-extrabold tracking-tight text-white mb-2">
+                Medical Document Intelligence
+            </h1>
+            <p class="text-slate-400 text-lg">
+                Upload unstructured clinical records to extract structured, production-ready JSON payloads.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-8">
+            
+            <div id="drop-zone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-xl p-10 text-center cursor-pointer transition-all bg-slate-800/50 backdrop-blur-sm">
+                <input type="file" id="file-input" class="hidden" accept=".pdf">
+                <div class="space-y-4">
+                    <div class="text-5xl">📄</div>
+                    <p class="text-base text-slate-300 font-medium">
+                        Drag and drop your patient PDF here, or <span class="text-indigo-400 underline">browse files</span>
+                    </p>
+                    <p class="text-xs text-slate-500">Only standard PDF documents are accepted</p>
+                </div>
+            </div>
+
+            <div id="status-card" class="hidden p-4 rounded-lg text-sm font-medium"></div>
+
+            <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl">
+                <div class="border-b border-slate-700 px-6 py-4 flex justify-between items-center bg-slate-800/80">
+                    <span class="text-sm font-semibold uppercase tracking-wider text-slate-400">Extraction Output (JSON)</span>
+                    <button id="copy-btn" class="hidden text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded font-medium transition-colors">
+                        Copy JSON
+                    </button>
+                </div>
+                <div class="p-6">
+                    <pre id="json-output" class="text-sm font-mono text-emerald-400 overflow-x-auto whitespace-pre-wrap">Waiting for document upload...</pre>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const jsonOutput = document.getElementById('json-output');
+        const statusCard = document.getElementById('status-card');
+        const copyBtn = document.getElementById('copy-btn');
+
+        // Trigger file browser click
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+
+        // Drag & Drop event handlers
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-indigo-500', 'bg-slate-800');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-indigo-500', 'bg-slate-800');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const file = dt.files[0];
+            handleFile(file);
+        });
+
+        // Async API upload handler
+        async function handleFile(file) {
+            if (!file) return;
+
+            if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
+                showStatus('Error: Only PDF documents are supported.', 'bg-red-500/20 text-red-400 border border-red-500/30');
+                return;
+            }
+
+            showStatus('Processing and parsing PDF text layers asynchronously...', 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30');
+            jsonOutput.textContent = '// Processing matrix...';
+            copyBtn.classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/v1/extract', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+
+                if (response.ok) {
+                    showStatus('Success: Extraction pipeline completed.', 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30');
+                    jsonOutput.textContent = JSON.stringify(data, null, 4);
+                    copyBtn.classList.remove('hidden');
+                } else {
+                    showStatus(`Extraction Failed: ${data.detail || 'Unknown server error'}`, 'bg-red-500/20 text-red-400 border border-red-500/30');
+                    jsonOutput.textContent = JSON.stringify(data, null, 4);
+                }
+            } catch (error) {
+                showStatus('Network Error: Could not connect to the extraction service.', 'bg-red-500/20 text-red-400 border border-red-500/30');
+                jsonOutput.textContent = `// Error communicating with backend:\n${error}`;
+            }
+        }
+
+        function showStatus(text, classes) {
+            statusCard.className = `p-4 rounded-lg text-sm font-medium ${classes}`;
+            statusCard.textContent = text;
+            statusCard.classList.remove('hidden');
+        }
+
+        // Copy functionality
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(jsonOutput.textContent);
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = 'Copied!';
+            setTimeout(() => copyBtn.textContent = originalText, 2000);
+        });
+    </script>
+</body>
+</html>
