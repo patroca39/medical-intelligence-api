@@ -4,8 +4,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from google import genai
-from google.genai import types
+from openai import AsyncOpenAI
 import fitz  # PyMuPDF
 
 app = FastAPI(title="Medical Document Intelligence API")
@@ -41,17 +40,17 @@ async def render_dashboard(request: Request):
 async def extract_medical_record(file: UploadFile = File(...)):
     """
     Asynchronously ingest a medical PDF, extract its text layer using PyMuPDF,
-    and orchestrate structural extraction using Gemini structured output forcing.
+    and orchestrate structural extraction using OpenAI structured output forcing.
     """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Invalid file type. Only PDF documents are accepted.")
     
     # Securely retrieve the API key from environment variables injected by the host
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=500, 
-            detail="System configuration error: GEMINI_API_KEY environment variable is missing on the host server."
+            detail="System configuration error: OPENAI_API_KEY environment variable is missing."
         )
 
     try:
@@ -72,8 +71,8 @@ async def extract_medical_record(file: UploadFile = File(...)):
                 "error": "The document contains no readable text layer. Native PDF text extraction found nothing."
             }
 
-        # PHASE 2.3: Initialize the Google GenAI Client & Execute Structured Extraction
-        client = genai.Client(api_key=api_key)
+        # PHASE 2.3: Initialize the OpenAI Client & Execute Structured Extraction
+        client = AsyncOpenAI(api_key=api_key)
         
         system_instruction = (
             "You are an expert clinical data extraction agent. Analyze the provided unstructured medical record "
@@ -81,22 +80,22 @@ async def extract_medical_record(file: UploadFile = File(...)):
             "absent or cannot be determined from the text, set its value to null. Do not guess or extrapolate clinical data."
         )
 
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=f"Extract data from this medical text:\n\n{raw_text}",
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                response_schema=MedicalRecordExtraction,
-                temperature=0.1,  # Low temperature ensures high determinism and clinical accuracy
-            ),
+        # Using OpenAI's native beta.parse to enforce the Pydantic schema perfectly
+        completion = await client.beta.chat.completions.parse(
+            model="gpt-4o",  # The flagship model requested by the job description
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": f"Extract data from this medical text:\n\n{raw_text}"}
+            ],
+            response_format=MedicalRecordExtraction,
+            temperature=0.1,  # Low temperature ensures high determinism and clinical accuracy
         )
 
         # Return the verified structured payload back to the UI interface
         return {
             "success": True,
             "filename": file.filename,
-            "data": response.text
+            "data": completion.choices[0].message.parsed.model_dump()
         }
 
     except Exception as e:
