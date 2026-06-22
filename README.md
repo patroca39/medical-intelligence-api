@@ -4,6 +4,11 @@ An asynchronous, robust FastAPI backend designed to extract structured clinical 
 
 This project bridges the gap between raw document parsing and highly structured database ingestion, utilizing AI orchestration to handle missing fields, bad OCR, and narrative clinical texts.
 
+Architecture Note: Engine Selection & Cost Optimization
+
+While the target production environment for this pipeline utilizes OpenAI (GPT-4o) for its native structured output parsing, this live demonstration currently employs Google Gemini 2.5 Flash. This architectural decision was made deliberately to optimize API compute costs during the CI/CD, testing, and edge-case verification phases. >
+Because the application is built modularly with strict Pydantic schemas handling the data validation, the underlying LLM provider is entirely abstracted. Transitioning the system to OpenAI in a production environment requires swapping only a single block of inference code, leaving the core FastApi routing and PyMuPDF ingestion layers completely untouched.
+
 ## 🚀 Live Demo
 **[Insert Your Hugging Face Space URL Here]**
 
